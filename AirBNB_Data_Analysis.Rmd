@@ -1,0 +1,254 @@
+---
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+header-includes: \usepackage{color}
+---
+----
+2024 Eric Wnorowski All Rights Reserved
+---
+
+```{r, echo = F, results = 'hide', message=F, warning = F}
+library(foreign)      #Default package for almost all code, lets your read files into R
+library(ggplot2)      #plotting package
+library(colorspace)   #better colors for ggplot
+library(broom)        #a widely used, but relatively new, package for producing tidier data and tidier output; part of tidyverse
+library(tidyverse)    #a widely used, but relatively new, package for producing tidier data and tidier output
+library(stargazer)    #produces pretty regression tables
+library(knitr)        #helps the knitting process. In particular, it lets the include_graphics command run
+library(gridExtra)    #allows grid.arrange() to produce prettier graphics
+library(GGally)       #for hte correlation matrix at the end ggpairs()
+library(ggridges)
+library(corrr)
+library(scales)
+library(knitr)
+library(modelr)
+library(plotly)
+```
+
+# Final Project
+
+### Authors:
+
+Eric Wnorowski
+
+## Loading the data
+
+```{r, echo = T, results = 'hide', message=F, warning = F}
+listings <- read.csv("listings.csv")
+neighborhoods <- read.csv("neighbourhoods.csv")
+reviews <- read.csv("reviews.csv")
+```
+
+
+# Hypothesis, Research and Justification
+  
+  The Berlin Dataset is a comprehensive summary of AirBNB data from 2018. AirBNB has become increasingly popular in the last decade, and Berlin is one of the most popular destinations in the world. This analysis will be most interested in the factors that could determine the prices of these rentals. Therefore the response variable throughout this research will look to see if there are factors that can model/predict the prices of the rentals. In particular the explanatory variable will be the quality of the host, using variables like number_of_reviews or host_response_rate we could quantify the quality. Berlin is a large city and there are various neighborhoods with different possible economic differences, therefore using neighborhood and neighborhood group the data can be controlled for these differences. AirBNB's also have a difference in size of the rental, and so this hypothesis will also try to control for this factor using room_type in order to see if the host can be a determining explanatory variable. 
+  
+  To start this project will look at some basic graphs of the aforementioned variables, and as the graphs and data shows patterns the analysis will become more focused. Eventually examining specific neighborhood groups and room_types to find if a hosts responses and AirBNB experience can model the prices of the rentals. 
+  
+  The first step will be to define and understand some of the key data points that will be used throughout this analysis. Going to define the prices in the listings dataset as price, and neighbourhood_group will become the American version of the variable, neighborhoodg.
+  
+# Introduction to Response Variable price & Control Variable neighbourhood_group
+
+```{r}
+price <- listings$price 
+summary(price)
+
+neighborhoodg <- listings$neighbourhood_group
+table(neighborhoodg)
+```
+ Using the summary() and table() commands we can learn a little more background on the price and neighborhoods that are recorded in the data. As we see from the summary() command the middle 50% of the rentals are priced between 30 and 70 dollars, however there are numerous rentals well above the 70 dollar mark. There are 12 different neighborhood groups, some with thousands of rentals listed and others with just a couple hundred. 
+ 
+# Filtering/Re-defining the Data
+ It may become useful to narrow these neighborhood groups down for future analysis. Therefore using filter() the groups with over 1000 listings will become their own value, OnlyThousandNeighborhood. And we will also look at two of these neighborhoods individually later so lets define them as well, CharlottenburgListings and PankowListings
+
+
+```{r}
+OnlyThousandNeighborhood <- listings %>%
+  filter(neighbourhood_group == "Charlottenburg-Wilm."| neighbourhood_group == "Friedrichshain-Kreuzberg"| neighbourhood_group == "Mitte" | neighbourhood_group == "Neukölln" | neighbourhood_group == "Pankow" | neighbourhood_group == "Tempelhof - Schöneberg")
+
+CharlottenburgListings <- OnlyThousandNeighborhood %>%
+  filter(neighbourhood_group == "Charlottenburg-Wilm.")
+
+
+PankowListings <- OnlyThousandNeighborhood %>%
+  filter(neighbourhood_group == "Pankow")
+
+```
+
+
+# Data Visualization of Single Variable Price
+Now that we have defined some values and gotten a general understanding of the data, let us visualize some basic graphs to further the understanding between price and these rentals. The first plot will just look at the variance in price across the groups in the OnlyThousandNeighborhood, that we just defined. 
+
+```{r}
+OTNg <- ggplot(data = OnlyThousandNeighborhood, aes(x = neighbourhood_group, y = price)) + geom_point()
+OTNg
+```
+
+# Data Visualization of Single Variable Price within Individual Neighborhoods
+Then the following two will look at the prices among the two neighborhood groups (Charlottenburg-Wilm. and Pankow) that we just defined as well. As we discovered when first analyzing the prices there can be some extremely high prices that make it difficult to understand the majority of the data. This is the case for the individual neighborhood visualizations. Therefore, for just this initial basic visualization CharlottenburgListings and PankowListings will exclude rentals with prices listed over 1000 dollars. 
+
+```{r}
+CharlottenburgListingsf <- CharlottenburgListings %>%
+  filter(price < 1000)
+
+PankowListingsf <- PankowListings %>%
+  filter(price < 1000)
+
+CLFg <- ggplot(data = CharlottenburgListingsf, aes(x = price)) + geom_histogram(binwidth = 10)
+CLFg
+summary(CharlottenburgListingsf$price)
+
+
+PLFg <- ggplot(data = PankowListingsf, aes(x = price)) + geom_histogram(binwidth = 10)
+PLFg
+summary(PankowListingsf$price)
+```
+
+
+The initial graph shows the difference between the neighborhood groups with a large number of rentals. Most are concentrated in the same area, but the range can be slightly different as seen in the following two graphs. The slopes of the histograms of CharlottenburgListingsf and PankowListingsF are similar but not exactly the same. It appears the Pankow neighborhood may decrease at a slightly more rapid rate than the Charlottenburg listings.
+
+
+# Data Visualization of Single Variable room_type
+Now before we begin analyzing this data to find the relationship between host and price, we will add one more visualization using the room_type variable to see if the room_type may be influencing the prices of the listings, using our two individual neighborhoods as a starting point. 
+
+```{r}
+ggplot(data = CharlottenburgListingsf, aes(x = room_type, y = price)) + geom_point()
+ggplot(data = PankowListingsf, aes(x = room_type, y = price)) + geom_point()
+```
+
+As expected these visualizations show that the room_type certainly matters when taking account for price. Lets look at another visualization of the most prominent neighborhoods, with the explanatory variable (number_of_reviews). This time room_type will be a color in order to determine if price is determined by the room type. 
+
+```{r}
+OnlyThousandNeighborhoodf <- OnlyThousandNeighborhood %>%
+  filter(price < 1000)
+
+ggplot() + geom_point(data = OnlyThousandNeighborhoodf, aes(x = number_of_reviews, y = price, color = room_type))
+```
+
+As these previous visualization demonstrate it is obvious that the room type could be a predictor for price. Our group had realized this when first looking at the dataset. Rather than approaching this as our explanatory variable, we had more interest in the hosts quality. It felt like room_type might be too obvious of a predictor. Therefore as stated in the hypothesis, just as we can control for neighborhood we may also have to control for room_type in order to determine the explantory variables. Let us take a look to see which room_types are most popular in each neighborhood.
+
+# Single Variable room_type Summary
+
+```{r}
+CLrt <- CharlottenburgListings$room_type
+table(CLrt)
+PLrt <- PankowListings$room_type
+table(PLrt)
+
+CharlottenburgListingsH <- CharlottenburgListingsf %>%
+  filter(room_type == "Entire home/apt")
+PankowListingsH <- PankowListingsf %>%
+  filter(room_type == "Entire home/apt")
+```
+
+For both neighborhoods the entire home/apartment is the most popular option so in order to control for the possible difference we can create values for each neighborhood that only include such room types. After creating such variables we will have a full basis of understanding of the data and the possible variances in prices. Therefore we will be able to begin to determine if the quality/identity of the host affects the pricing of listings. 
+
+# 3-D Data Visualization of Variables price and reviews_per_month
+
+We will start by analyzing my groups original explanatory variable of interest, reviews_per_month. When guests are looking for AirBNB's to stay at we believe they would check to see the reviews, and the consistency of these reviews. We hypothesized that the more reviews per month a host receives they likely have more people staying the listing and thus are a reliable host. This in turn would cause there prices to become increased. So we will begin with a 3-D visualization of the 6 neighborhoods that were outline earlier as the set, OnlyThousandNeighborhood. This visualization may improve our understanding of the trend in pricing and reviews_per_month throughout these neighborhoods.
+
+Note: The visualization will exclude data points where the price is too high in order to create a more suitable graph, because the majority of the prices are under 100 dollars, as show in the summary statistics at the beginning of this report.
+
+```{r}
+plotRPMvPricevNHG <- plot_ly(OnlyThousandNeighborhoodf, x = ~reviews_per_month,
+                                      y = ~price, z = ~neighbourhood_group,
+                                      text = ~neighbourhood) %>%
+  add_markers(size = 5) %>%
+  layout(title = "Berlin AirBNBs",
+         scene = list(xaxis = list(title = 'Reviews per Month'),
+                      yaxis = list(title = 'Rental Price'),
+                      zaxis = list(title = 'Neighborhood Group')))
+plotRPMvPricevNHG
+```
+
+Each neighborhood has a remarkably similar trend, many data points are centered between under 200 dollars in price and less than 5 reviews per month. However each neighborhood has high priced rentals with a low number of of reviews. And the ones with highest number of reviews are still under 100 dollars a month. This first visualization does not seem to concur with the original hypothesis, however perhaps our models will tell a different story. Therefore we will create a model for both individual neighborhoods, Charlottenburg and Pankow, to see if there is a possibility that an increase in reviews could mean an increase in listing price, and in order to control for the possible different prices due to different room types we will use the CharlottenburgListingsH and PankowListingsH data. 
+
+
+# Model and Data Visualization of Charlottenburg 
+
+Note: The visualization will exclude data points where the price is too high in order to create a more suitable graph, because the majority of the prices are under 100 dollars, as show in the summary statistics at the beginning of this report.
+
+```{r}
+RPMmod <- lm(price ~ reviews_per_month, data = CharlottenburgListingsH)
+tidy(RPMmod)
+
+CLHgrid <- CharlottenburgListingsH %>%
+  add_predictions(RPMmod, 'pred_price') 
+
+ggplot()+
+  geom_point(data = CharlottenburgListingsH, aes(x = reviews_per_month, y = price),  colour = "black",   size = 2) +
+
+  geom_line (data = CLHgrid,  aes(x = reviews_per_month, y = pred_price),  colour = "red",    linetype = 'dashed')
+```
+
+Our model does form a line with a positive slope, indicating that our hypothesis may be correct. By the models prediction an increase in reviews_per_month correlates to an increase in listing price. However its important to look further into the statistics behind the model and understand the accuracy of it. 
+
+
+
+# Summary Statistics and Residual Graph of Charlottenburg Model
+
+Note: The visualization will exclude data points where the price is too high in order to create a more suitable graph, because the majority of the prices are under 100 dollars, as show in the summary statistics at the beginning of this report.
+```{r}
+summary(RPMmod)
+
+CLHgrid <- CLHgrid %>%
+  add_residuals(RPMmod, "CLH_resid")
+
+ggplot()+
+  geom_point(data = CLHgrid, aes(x = CLH_resid, y = price))
+```
+```{r}
+listingsH <- listings %>%
+  filter(room_type == "Entire home/apt")
+summary(listingsH$price)
+```
+
+
+Well there is an unexpected output! Our hypothesis did not consider this outcome. The residual graph shows that for higher priced listings the residuals from our model above is also increasing. Meaning high priced rentals are less likely to be affected or related to the reviews per month, While those rentals with around the statistically average price (see code chunk above, average of all Home/Apartment listings being 83 dollars) have the least residual. A fascinating discovery that shows perhaps reviews_per_month are relevant in pricing for the majority of rentals, but those more expensively priced, or very cheaply priced may not be affected by the number of reviews. Fascinating! Let us see if the Pankow neighborhood has a similar result with the model.
+
+# Model and Data Visualization of Pankow
+
+Note: The visualization will exclude data points where the price is too high in order to create a more suitable graph, because the majority of the prices are under 100 dollars, as show in the summary statistics at the beginning of this report.
+
+```{r}
+RPMmod1 <- lm(price ~ reviews_per_month, data = PankowListingsH)
+tidy(RPMmod1)
+
+PLHgrid <- PankowListingsH %>%
+  add_predictions(RPMmod1, 'pred_price') 
+
+ggplot()+
+  geom_point(data = PankowListingsH, aes(x = reviews_per_month, y = price),  colour = "black",   size = 2) +
+
+  geom_line (data = PLHgrid,  aes(x = reviews_per_month, y = pred_price),  colour = "red",    linetype = 'dashed')
+```
+
+Just as the previous model showed, there appears to be a slightly increasing slope. However this seems to be less gradual. Lets find out by doing some more descriptive statistics, and seeing if the residual graph for this model is similar to our previous!
+
+# Summary Statistics and Residual Graph of Pankow Model
+
+Note: The visualization will exclude data points where the price is too high in order to create a more suitable graph, because the majority of the prices are under 100 dollars, as show in the summary statistics at the beginning of this report.
+
+```{r}
+summary(RPMmod1)
+
+PLHgrid <- PLHgrid %>%
+  add_residuals(RPMmod1, "PLH_resid")
+
+ggplot()+
+  geom_point(data = PLHgrid, aes(x = PLH_resid, y = price))
+```
+
+The Pankow neighborhood produces fascinatingly similar results to the previous model, the residuals are increasing as the price of the listing increases. And those listing in the middle of prices (from the summary of all listings labeled Home/Apartments: Q1=49 dollars, Q2=91 dollars) appear to have the least residuals out of all the listings. The residual graphs have created a fascinating pattern that will likely cause for a different conclusion than the hypothesis originally predicted.
+
+
+# Concluding Remarks
+
+This data set could provide numerous different reports on a variety of trends. This report was specifically focused on the change in price with regards to the host. I personally have used AirBNB in the past and the quality of the host has changed decisions on which rental to stay in. Therefore this report was to discover if there was an observable trend between the quality of the host and price. In order to quantify the quality of the host the variable reviews_per_month, an indicator of a reliable host. However it would have been difficult to do this across all listings due to various economic differences. The first difference to control for is the various neighborhoods in Berlin, because Berlin is a large city with various economic differences. Therefore this report narrowed it down into the six most popular neighborhoods using data set, OnlyThousandNeighborhoods, and chose two specific neighborhoods, Pankow and Charlottenburg. There is also another obvious factor that would change the price in listings, the room type of the rental. Through data visualizations the report demonstrates how variable room_type would be a powerful predictor for price. However the hypothesis was not concerned with room type, only the host.
+
+Therefore this report controlled for the difference in the aforementioned variables. Then performed modeling and analysis to see if host quality could be a predictor. The models and graphs showed that our hypothesis may be correct, both models showed increases in price as the number of reviews a host receive increased. The true discovery of this report came with the residuals of the model. The residual graphs demonstrated that the residuals in listings with average pricing (as found by summary statistics) were not as extreme as the listings with cheap prices and high prices. This means that reviews can be predictors for the majority of listings, but not for those listings with low/high prices.
+
+Perhaps this means our hypothesis is true, and the outliers of cheap/expensive prices are due to renters not being concerned with the hosts quality. An inexpensive rental may be sufficient enough for renters to not worry about the quality of the host. The same could be said for expensive listings, renters are solely concerned with the quality of the listing not the quality of the host. However for the majority of listings reviews_per_month is a predictor for price. Therefore this report can conclude that the quality of the host can make a difference in a listings price for average priced listings. 
